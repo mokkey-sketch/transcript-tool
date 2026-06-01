@@ -1,33 +1,20 @@
 import streamlit as st
-import importlib.util
-import sys
-import os
+from engine import process_transcript
 
-# Define the file path manually
-file_path = os.path.join(os.path.dirname(__file__), "engine.py")
+st.title("YouTube Transcript Tool")
 
-# Dynamically load the module
-spec = importlib.util.spec_from_file_location("engine", file_path)
-engine = importlib.util.module_from_spec(spec)
-sys.modules["engine"] = engine
-spec.loader.exec_module(engine)
-
-# Access the function
-run_transcript_job = engine.run_transcript_job
-
-st.title("Transcript Tool")
-
-sheet_id = st.text_input("Google Sheet ID")
+sheet_id = st.text_input("Sheet ID")
 source = st.text_input("Source Tab", "Form")
 target = st.text_input("Target Tab", "Transcript results")
 
-if st.button("Start Processing"):
+if st.button("Run"):
     if not sheet_id:
-        st.error("Please enter a Google Sheet ID.")
+        st.error("Please enter a Sheet ID.")
     else:
-        with st.spinner('Processing...'):
+        with st.spinner("Processing..."):
             try:
-                status = run_transcript_job(sheet_id, source, target)
+                # Call the correct function name here!
+                status = process_transcript(sheet_id, source, target)
                 st.success(status)
             except Exception as e:
                 st.error(f"Error: {e}")
