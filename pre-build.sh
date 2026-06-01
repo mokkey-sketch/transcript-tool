@@ -1,10 +1,6 @@
 #!/bin/bash
-# Install Bun
+# Install bun
 curl -fsSL https://bun.sh/install | bash
 
-# Add bun to the PATH for the current session
-export BUN_INSTALL="$HOME/.bun"
-export PATH="$BUN_INSTALL/bin:$PATH"
-
-# Install your project dependencies using bun
-bun install
+# Ensure the bun binary is in the PATH for the rest of the build/run
+export PATH="$HOME/.bun/bin:$PATH"
