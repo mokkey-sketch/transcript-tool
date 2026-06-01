@@ -16,7 +16,6 @@ def get_gc():
     return gspread.authorize(creds)
 
 def extract_video_id(url):
-    # Regex to extract video ID from various YouTube URL formats
     pattern = r"(?:v=|\/)([0-9A-Za-z_-]{11}).*"
     match = re.search(pattern, url)
     return match.group(1) if match else None
@@ -28,17 +27,22 @@ def process_transcript(sheet_id, source_tab, target_tab):
     target_ws = sh.worksheet(target_tab)
     
     rows = source_ws.get_all_values()
-    write_row = 2
+    
+    # Use a variable to track the next empty row in the target tab
+    target_data = target_ws.get_all_values()
+    write_row = len(target_data) + 1
     
     for i in range(1, len(rows)):
-        url = rows[i][1]
+        # Change index to 0 for Column A, or 1 for Column B
+        url = rows[i][0] 
         video_id = extract_video_id(url)
         
         if not video_id:
             continue
             
+        st.write(f"Processing: {video_id}...")
+            
         try:
-            # Fetch transcript using the native Python library
             transcript_list = YouTubeTranscriptApi.get_transcript(video_id)
             transcript = " ".join([t['text'] for t in transcript_list])
             
@@ -48,7 +52,7 @@ def process_transcript(sheet_id, source_tab, target_tab):
                 target_ws.update_cell(write_row, 2, chunk)
                 write_row += 1
         except Exception as e:
-            print(f"Could not fetch transcript for {url}: {e}")
+            st.warning(f"Could not fetch transcript for {url}: {e}")
             continue
             
-    return "Done!"
+    return "Process complete."
