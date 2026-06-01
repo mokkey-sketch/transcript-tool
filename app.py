@@ -1,10 +1,19 @@
 import streamlit as st
+import importlib.util
 import sys
 import os
 
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+# Define the file path manually
+file_path = os.path.join(os.path.dirname(__file__), "engine.py")
 
-from engine import run_transcript_job
+# Dynamically load the module
+spec = importlib.util.spec_from_file_location("engine", file_path)
+engine = importlib.util.module_from_spec(spec)
+sys.modules["engine"] = engine
+spec.loader.exec_module(engine)
+
+# Access the function
+run_transcript_job = engine.run_transcript_job
 
 st.title("Transcript Tool")
 
