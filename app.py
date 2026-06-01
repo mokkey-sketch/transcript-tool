@@ -1,6 +1,7 @@
 import streamlit as st
 import sys
 import os
+import traceback
 
 # Ensure the root directory is in the path
 sys.path.append(os.getcwd())
@@ -29,4 +30,7 @@ if st.button("Run"):
                 status = process_transcript(sheet_id, source, target)
                 st.success(status)
             except Exception as e:
+                # This block will now show the exact line and error type
                 st.error(f"Error during execution: {e}")
+                st.subheader("Full Technical Details:")
+                st.code(traceback.format_exc())
