@@ -1,38 +1,17 @@
 import streamlit as st
 import pandas as pd
-import subprocess
-import os
-import shutil
-
-# Ensure bun is installed
-BUN_PATH = os.path.expanduser("~/.bun/bin/bun")
-
-def install_bun():
-    if not os.path.exists(BUN_PATH):
-        st.info("Installing Bun runtime...")
-        subprocess.run(["curl", "-fsSL", "https://bun.sh/install", "|", "bash"], shell=True)
-    return os.path.exists(BUN_PATH)
+from youtube_transcript_api import YouTubeTranscriptApi
+import re
 
 st.title("YouTube Transcript Batch Tool")
-
-# Check for bun on load
-if not install_bun():
-    st.error("Bun installation failed. Please check environment permissions.")
 
 urls_text = st.text_area("Paste your YouTube URLs (one per line)", height=150)
 urls = [u.strip() for u in urls_text.split('\n') if u.strip()]
 
-def get_transcript_via_bun(url):
-    # Call bun directly using the path
-    result = subprocess.run(
-        [BUN_PATH, "run", "src/cli.ts", "get", url],
-        capture_output=True,
-        text=True
-    )
-    if result.returncode == 0:
-        return result.stdout.strip()
-    else:
-        raise Exception(result.stderr.strip())
+def extract_video_id(url):
+    pattern = r"(?:v=|\/)([0-9A-Za-z_-]{11}).*"
+    match = re.search(pattern, url)
+    return match.group(1) if match else None
 
 if st.button("Process Batch"):
     if not urls:
@@ -40,12 +19,19 @@ if st.button("Process Batch"):
     else:
         results = []
         for url in urls:
+            video_id = extract_video_id(url)
+            if not video_id:
+                st.error(f"Invalid URL: {url}")
+                continue
+            
             try:
-                transcript = get_transcript_via_bun(url)
+                # Use the class directly
+                transcript_list = YouTubeTranscriptApi.get_transcript(video_id)
+                transcript = " ".join([t['text'] for t in transcript_list])
                 results.append({"URL": url, "Transcript": transcript})
-                st.success(f"Processed: {url}")
+                st.success(f"Processed: {video_id}")
             except Exception as e:
-                st.error(f"Could not fetch {url}: {e}")
+                st.error(f"Error fetching {video_id}: {e}")
         
         if results:
             df = pd.DataFrame(results)
