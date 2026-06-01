@@ -1,3 +1,9 @@
+import subprocess
+import sys
+
+# Force install the official library if it's missing or corrupted
+subprocess.check_call([sys.executable, "-m", "pip", "install", "youtube-transcript-api"])
+
 import streamlit as st
 import pandas as pd
 from youtube_transcript_api import YouTubeTranscriptApi
@@ -25,7 +31,7 @@ if st.button("Process Batch"):
                 continue
             
             try:
-                # Use the class directly
+                # Direct call to the library
                 transcript_list = YouTubeTranscriptApi.get_transcript(video_id)
                 transcript = " ".join([t['text'] for t in transcript_list])
                 results.append({"URL": url, "Transcript": transcript})
