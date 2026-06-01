@@ -22,8 +22,7 @@ if st.button("Process Batch"):
         results = []
         progress_bar = st.progress(0)
         
-        # Instantiate the API object once
-        yta = YouTubeTranscriptApi()
+        # REMOVED: yta = YouTubeTranscriptApi() - DO NOT USE THIS
         
         for index, url in enumerate(urls):
             video_id = extract_video_id(url)
@@ -32,8 +31,8 @@ if st.button("Process Batch"):
                 continue
             
             try:
-                # Use the instance-based call
-                transcript_list = yta.get_transcript(video_id)
+                # Use the class directly
+                transcript_list = YouTubeTranscriptApi.get_transcript(video_id)
                 transcript = " ".join([t['text'] for t in transcript_list])
                 results.append({"URL": url, "Transcript": transcript})
                 st.success(f"Processed: {video_id}")
