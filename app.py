@@ -1,19 +1,24 @@
 import streamlit as st
 import pandas as pd
-from youtube_transcript_api import YouTubeTranscriptApi
+import subprocess
 import re
 
 st.title("YouTube Transcript Batch Tool")
 
-# Input field
 urls_text = st.text_area("Paste your YouTube URLs (one per line)", height=150)
 urls = [u.strip() for u in urls_text.split('\n') if u.strip()]
 
-def extract_video_id(url):
-    # This regex handles standard and short-link YouTube formats
-    pattern = r"(?:v=|\/)([0-9A-Za-z_-]{11}).*"
-    match = re.search(pattern, url)
-    return match.group(1) if match else None
+def get_transcript_via_bun(url):
+    # This calls the command that you know works in your Colab
+    result = subprocess.run(
+        ["bun", "run", "src/cli.ts", "get", url],
+        capture_output=True,
+        text=True
+    )
+    if result.returncode == 0:
+        return result.stdout.strip()
+    else:
+        raise Exception(result.stderr.strip())
 
 if st.button("Process Batch"):
     if not urls:
@@ -22,28 +27,16 @@ if st.button("Process Batch"):
         results = []
         progress_bar = st.progress(0)
         
-        # REMOVED: yta = YouTubeTranscriptApi() - DO NOT USE THIS
-        
         for index, url in enumerate(urls):
-            video_id = extract_video_id(url)
-            if not video_id:
-                st.error(f"Invalid URL: {url}")
-                continue
-            
             try:
-                # Use the class directly
-                transcript_list = YouTubeTranscriptApi.get_transcript(video_id)
-                transcript = " ".join([t['text'] for t in transcript_list])
+                transcript = get_transcript_via_bun(url)
                 results.append({"URL": url, "Transcript": transcript})
-                st.success(f"Processed: {video_id}")
+                st.success(f"Processed: {url}")
             except Exception as e:
-                # Provide specific error feedback
                 st.error(f"Could not fetch {url}: {e}")
             
-            # Update progress
             progress_bar.progress((index + 1) / len(urls))
 
-        # Download button appears only if results exist
         if results:
             df = pd.DataFrame(results)
             csv = df.to_csv(index=False).encode('utf-8')
