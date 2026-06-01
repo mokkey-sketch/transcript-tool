@@ -1,36 +1,32 @@
 import streamlit as st
-import sys
-import os
-import traceback
+import pandas as pd
+import io
+# Use the library we identified earlier instead of bun
+from youtube_transcript_api import YouTubeTranscriptApi 
 
-# Ensure the root directory is in the path
-sys.path.append(os.getcwd())
-
-# 1. Attempt to import the function
-try:
-    from engine import process_transcript
-    st.success("Engine loaded successfully!")
-except Exception as e:
-    st.error(f"Failed to load engine: {e}")
-    st.stop()
-
-# 2. Render the UI ONLY if the import succeeded
 st.title("YouTube Transcript Tool")
 
-sheet_id = st.text_input("Sheet ID")
-source = st.text_input("Source Tab", "Form")
-target = st.text_input("Target Tab", "Transcript results")
+# 1. Simple Input
+urls_text = st.text_area("Paste your YouTube URLs (one per line)")
+urls = [u.strip() for u in urls_text.split('\n') if u.strip()]
 
-if st.button("Run"):
-    if not sheet_id:
-        st.error("Please enter a Sheet ID.")
-    else:
-        with st.spinner("Processing..."):
-            try:
-                status = process_transcript(sheet_id, source, target)
-                st.success(status)
-            except Exception as e:
-                # This block will now show the exact line and error type
-                st.error(f"Error during execution: {e}")
-                st.subheader("Full Technical Details:")
-                st.code(traceback.format_exc())
+if st.button("Get Transcripts"):
+    results = []
+    
+    # 2. Processing
+    for url in urls:
+        try:
+            # Assuming you use a utility to get video ID
+            video_id = url.split("v=")[-1] 
+            transcript_list = YouTubeTranscriptApi.get_transcript(video_id)
+            transcript = " ".join([t['text'] for t in transcript_list])
+            results.append({"URL": url, "Transcript": transcript})
+            st.write(f"✓ Fetched: {url}")
+        except Exception as e:
+            st.error(f"Error on {url}: {e}")
+
+    # 3. Direct Download
+    if results:
+        df = pd.DataFrame(results)
+        csv = df.to_csv(index=False).encode('utf-8')
+        st.download_button("Download CSV", data=csv, file_name="transcripts.csv")
