@@ -21,9 +21,6 @@ if st.button("Process Batch"):
         results = []
         progress = st.progress(0)
         
-        # Initialize the API client once
-        api_client = YouTubeTranscriptApi()
-        
         for i, url in enumerate(urls):
             vid = extract_video_id(url)
             if not vid:
@@ -31,13 +28,14 @@ if st.button("Process Batch"):
                 continue
             
             try:
-                # MODERN API: Use .fetch()
-                data = api_client.fetch(vid)
-                text = " ".join([chunk['text'] for chunk in data])
+                # Stable call for version 0.6.1
+                transcript_list = YouTubeTranscriptApi.get_transcript(vid)
+                # Dictionary access is now safe because we pinned to 0.6.1
+                text = " ".join([chunk['text'] for chunk in transcript_list])
                 results.append({"URL": url, "Transcript": text})
-                st.success(f"Done: {vid}")
+                st.success(f"Processed: {vid}")
             except Exception as e:
-                st.error(f"Failed {url}: {str(e)}")
+                st.error(f"Failed {vid}: {str(e)}")
             
             progress.progress((i + 1) / len(urls))
 
