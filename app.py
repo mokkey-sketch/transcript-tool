@@ -1,68 +1,60 @@
 import streamlit as st
 import pandas as pd
-from youtube_transcript_api import YouTubeTranscriptApi
-from youtube_transcript_api._errors import TranscriptsDisabled, NoTranscriptFound, VideoUnavailable
+import subprocess
 import time
-import re
 from io import BytesIO
 
-# Set page configuration
-st.set_page_config(page_title="Batch Transcript Extractor", layout="wide")
-st.title("🛡️ Production Transcript Batch Pipeline")
+st.set_page_config(page_title="Bulletproof Transcript Tool", layout="wide")
+st.title("🛡️ Bulletproof Transcript Batcher")
 
-def extract_video_id(url):
-    pattern = r"(?:v=|\/)([0-9A-Za-z_-]{11}).*"
-    match = re.search(pattern, url)
-    return match.group(1) if match else None
+# --- 1. Core Extraction Engine (Using Bun CLI) ---
+def get_transcript(url):
+    """Calls your stable Bun CLI to get the transcript."""
+    try:
+        # Calls the specific CLI path you verified works
+        result = subprocess.run(
+            ["bun", "run", "ytranscript/src/cli.ts", "get", url],
+            capture_output=True,
+            text=True,
+            timeout=30 # Add timeout to prevent hangs
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+        else:
+            return f"ERROR: CLI Failed ({result.stderr.strip()})"
+    except Exception as e:
+        return f"ERROR: Execution failed: {str(e)}"
 
-def fetch_with_retry(video_id, retries=3):
-    """Fetches transcript with delays to avoid 429 rate-limiting."""
-    for attempt in range(retries):
-        try:
-            # Pinned stable dictionary-based fetch
-            data = YouTubeTranscriptApi.get_transcript(video_id)
-            if not data:
-                return "EMPTY_RESPONSE"
-            return " ".join([chunk['text'] for chunk in data])
-        
-        except (TranscriptsDisabled, NoTranscriptFound):
-            return "NO_TRANSCRIPT_AVAILABLE"
-        except Exception as e:
-            # If we hit 429 (Too Many Requests), wait longer before retrying
-            if "429" in str(e):
-                time.sleep(5)  # Wait 5 seconds if rate-limited
-            else:
-                time.sleep(2)  # Standard retry delay
-            if attempt == retries - 1:
-                return f"ERROR: {str(e)}"
-    return "FAILED_AFTER_RETRIES"
+# --- 2. State & UI ---
+if 'results' not in st.session_state:
+    st.session_state.results = []
 
-# UI Logic
 urls_text = st.text_area("Paste URLs (one per line):", height=150)
 
 if st.button("Start Batch Processing"):
     urls = [u.strip() for u in urls_text.split('\n') if u.strip()]
-    results = []
-    progress_bar = st.progress(0)
+    st.session_state.results = [] # Clear state for new batch
     
-    with st.spinner("Processing batch..."):
-        for i, url in enumerate(urls):
-            vid = extract_video_id(url)
-            if not vid:
-                results.append({"URL": url, "Transcript": "INVALID_URL"})
-            else:
-                # IMPORTANT: Throttle between every single request
-                time.sleep(2.0) 
-                text = fetch_with_retry(vid)
-                results.append({"URL": url, "Transcript": text})
-            
-            progress_bar.progress((i + 1) / len(urls))
+    progress = st.progress(0)
+    for i, url in enumerate(urls):
+        st.write(f"Processing: {url}")
+        
+        # Throttling: The "Anti-429" layer
+        time.sleep(2.5) 
+        
+        transcript = get_transcript(url)
+        st.session_state.results.append({"URL": url, "Transcript": transcript})
+        
+        progress.progress((i + 1) / len(urls))
+    st.rerun()
 
-    # Output Layer
-    df = pd.DataFrame(results)
+# --- 3. Memory-Safe Export ---
+if st.session_state.results:
+    df = pd.DataFrame(st.session_state.results)
     st.dataframe(df)
     
     towrite = BytesIO()
     df.to_csv(towrite, index=False)
     towrite.seek(0)
-    st.download_button("Download Batch CSV", towrite, "results.csv", "text/csv")
+    
+    st.download_button("Download CSV", towrite, "stable_results.csv", "text/csv")
