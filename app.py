@@ -1,97 +1,69 @@
 import streamlit as st
 import pandas as pd
+import sqlite3
 import time
 import random
 import re
-import json
-import os
-import shutil
 from youtube_transcript_api import YouTubeTranscriptApi
 from io import BytesIO
 
-st.set_page_config(page_title="Autonomous Pipeline", layout="wide")
-st.title("🚀 Autonomous Pipeline with Hard Reset")
+# --- Database Setup ---
+def get_db():
+    conn = sqlite3.connect('pipeline.db')
+    conn.execute('''CREATE TABLE IF NOT EXISTS queue 
+                    (url TEXT PRIMARY KEY, status TEXT, transcript TEXT)''')
+    return conn
 
-STATE_FILE = "pipeline_state.json"
-
-# --- Reset/Restart Logic ---
-def hard_reset():
-    """Wipes all state and restarts the app to a blank slate."""
-    if os.path.exists(STATE_FILE):
-        os.remove(STATE_FILE)
-    for key in st.session_state.keys():
-        del st.session_state[key]
-    st.rerun()
-
-# --- State Management ---
-def load_state():
-    if os.path.exists(STATE_FILE):
-        try:
-            with open(STATE_FILE, "r") as f:
-                saved = json.load(f)
-                st.session_state.batch_queue = saved.get("queue", [])
-                st.session_state.queue_index = saved.get("index", 0)
-        except: pass
-
-if 'batch_queue' not in st.session_state:
-    load_state()
-    if 'batch_queue' not in st.session_state:
-        st.session_state.batch_queue = []
-        st.session_state.queue_index = 0
-
-if 'results' not in st.session_state:
-    st.session_state.results = pd.DataFrame(columns=["URL", "Status", "Transcript"])
-
-# --- UI Sidebar ---
-with st.sidebar:
-    st.header("Pipeline Controls")
-    input_text = st.text_area("Paste URLs:", height=150)
-    if st.button("Load & Start Pipeline"):
-        st.session_state.batch_queue = [u.strip() for u in input_text.split('\n') if u.strip()]
-        st.session_state.queue_index = 0
-        st.session_state.results = pd.DataFrame(columns=["URL", "Status", "Transcript"])
-        st.rerun()
+# --- Core Engine ---
+def process_queue():
+    conn = get_db()
+    # Get unprocessed items
+    pending = conn.execute("SELECT url FROM queue WHERE status = 'PENDING'").fetchall()
     
-    st.divider()
-    if st.button("🚨 HARD RESET (Wipe All)"):
-        hard_reset()
-
-# --- Execution Engine ---
-batch_size = 5
-remaining = len(st.session_state.batch_queue) - st.session_state.queue_index
-
-if remaining > 0:
-    st.info(f"Pipeline running: {st.session_state.queue_index} / {len(st.session_state.batch_queue)} processed.")
-    
-    # Process batch
-    start = st.session_state.queue_index
-    current_batch = st.session_state.batch_queue[start : start + batch_size]
-    
-    new_data = []
-    for url in current_batch:
+    for (url,) in pending:
         vid = re.search(r"(?:v=|\/)([0-9A-Za-z_-]{11}).*", url)
         vid = vid.group(1) if vid else None
         
-        # Safe Fetching
         try:
-            time.sleep(8 + random.uniform(0, 4))
+            time.sleep(8 + random.uniform(0, 4)) # Strict Pacing
             data = YouTubeTranscriptApi.get_transcript(vid)
-            text, status = " ".join([c['text'] for c in data]), "OK"
+            text = " ".join([c['text'] for c in data])
+            conn.execute("UPDATE queue SET status='OK', transcript=? WHERE url=?", (text, url))
         except Exception as e:
-            text, status = str(e), "FAILED"
-            
-        new_data.append({"URL": url, "Status": status, "Transcript": text})
-    
-    # Update state
-    st.session_state.results = pd.concat([st.session_state.results, pd.DataFrame(new_data)], ignore_index=True)
-    st.session_state.queue_index += len(current_batch)
-    
-    # Save State
-    with open(STATE_FILE, "w") as f:
-        json.dump({"queue": st.session_state.batch_queue, "index": st.session_state.queue_index}, f)
+            conn.execute("UPDATE queue SET status=?, transcript=? WHERE url=?", ('FAILED', str(e), url))
         
-    st.rerun()
+        conn.commit()
+    conn.close()
 
-# --- Display ---
-if not st.session_state.results.empty:
-    st.dataframe(st.session_state.results)
+# --- UI ---
+st.title("🚀 Production VM Pipeline")
+
+with st.sidebar:
+    input_text = st.text_area("Paste URLs (one per line):")
+    if st.button("Add to Database"):
+        conn = get_db()
+        for url in input_text.split('\n'):
+            if url.strip():
+                conn.execute("INSERT OR IGNORE INTO queue VALUES (?, 'PENDING', '')", (url.strip(),))
+        conn.commit()
+        conn.close()
+        st.rerun()
+
+if st.button("Process Pending Queue"):
+    with st.spinner("Processing..."):
+        process_queue()
+        st.success("Batch Complete!")
+        st.rerun()
+
+# --- Data View ---
+conn = get_db()
+df = pd.read_sql("SELECT * FROM queue", conn)
+conn.close()
+
+st.dataframe(df)
+
+if not df.empty:
+    towrite = BytesIO()
+    df.to_csv(towrite, index=False)
+    towrite.seek(0)
+    st.download_button("Download Database Export", towrite, "results.csv", "text/csv")
