@@ -33,7 +33,7 @@ def process_transcript(sheet_id, source_tab, target_tab):
     write_row = len(target_data) + 1
     
     for i in range(1, len(rows)):
-        # Change index to 0 for Column A, or 1 for Column B
+        # Assuming URL is in Column A (index 0)
         url = rows[i][0] 
         video_id = extract_video_id(url)
         
@@ -46,11 +46,14 @@ def process_transcript(sheet_id, source_tab, target_tab):
             transcript_list = YouTubeTranscriptApi.get_transcript(video_id)
             transcript = " ".join([t['text'] for t in transcript_list])
             
+            st.write(f"Transcript fetched. Writing {len(transcript)} chars to row {write_row}...")
+            
             chunks = textwrap.wrap(transcript, width=45000)
             for chunk in chunks:
                 target_ws.update_cell(write_row, 1, url)
                 target_ws.update_cell(write_row, 2, chunk)
                 write_row += 1
+                
         except Exception as e:
             st.warning(f"Could not fetch transcript for {url}: {e}")
             continue
