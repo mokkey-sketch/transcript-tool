@@ -1,4 +1,3 @@
 nodejs
 curl
 unzip
-bun
