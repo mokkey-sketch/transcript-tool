@@ -3,72 +3,95 @@ import pandas as pd
 import time
 import random
 import re
+import json
+import os
+import shutil
 from youtube_transcript_api import YouTubeTranscriptApi
 from io import BytesIO
 
-st.set_page_config(page_title="Transcript Pipeline", layout="wide")
-st.title("🛡️ Deterministic Transcript Pipeline")
+st.set_page_config(page_title="Autonomous Pipeline", layout="wide")
+st.title("🚀 Autonomous Pipeline with Hard Reset")
 
-# --- Persistent State ---
+STATE_FILE = "pipeline_state.json"
+
+# --- Reset/Restart Logic ---
+def hard_reset():
+    """Wipes all state and restarts the app to a blank slate."""
+    if os.path.exists(STATE_FILE):
+        os.remove(STATE_FILE)
+    for key in st.session_state.keys():
+        del st.session_state[key]
+    st.rerun()
+
+# --- State Management ---
+def load_state():
+    if os.path.exists(STATE_FILE):
+        try:
+            with open(STATE_FILE, "r") as f:
+                saved = json.load(f)
+                st.session_state.batch_queue = saved.get("queue", [])
+                st.session_state.queue_index = saved.get("index", 0)
+        except: pass
+
 if 'batch_queue' not in st.session_state:
-    st.session_state.batch_queue = []
-if 'queue_index' not in st.session_state:
-    st.session_state.queue_index = 0
+    load_state()
+    if 'batch_queue' not in st.session_state:
+        st.session_state.batch_queue = []
+        st.session_state.queue_index = 0
+
 if 'results' not in st.session_state:
     st.session_state.results = pd.DataFrame(columns=["URL", "Status", "Transcript"])
 
-# --- Core Logic ---
-def extract_video_id(url):
-    match = re.search(r"(?:v=|\/)([0-9A-Za-z_-]{11}).*", url)
-    return match.group(1) if match else None
-
-def get_transcript_safe(vid):
-    """Paced fetch with retry logic."""
-    try:
-        # Stronger pacing for production stability
-        time.sleep(8 + random.uniform(0, 4)) 
-        data = YouTubeTranscriptApi.get_transcript(vid)
-        return " ".join([c['text'] for c in data]), "OK"
-    except Exception as e:
-        return str(e), "FAILED"
-
-# --- Sidebar Input ---
+# --- UI Sidebar ---
 with st.sidebar:
-    input_text = st.text_area("Paste URLs:", height=200)
-    if st.button("Load & Reset Queue"):
+    st.header("Pipeline Controls")
+    input_text = st.text_area("Paste URLs:", height=150)
+    if st.button("Load & Start Pipeline"):
         st.session_state.batch_queue = [u.strip() for u in input_text.split('\n') if u.strip()]
         st.session_state.queue_index = 0
         st.session_state.results = pd.DataFrame(columns=["URL", "Status", "Transcript"])
         st.rerun()
+    
+    st.divider()
+    if st.button("🚨 HARD RESET (Wipe All)"):
+        hard_reset()
 
-# --- Batch Processing Engine ---
+# --- Execution Engine ---
 batch_size = 5
 remaining = len(st.session_state.batch_queue) - st.session_state.queue_index
 
 if remaining > 0:
-    st.info(f"Progress: {st.session_state.queue_index} / {len(st.session_state.batch_queue)} processed.")
+    st.info(f"Pipeline running: {st.session_state.queue_index} / {len(st.session_state.batch_queue)} processed.")
     
-    if st.button(f"Process Next {min(batch_size, remaining)} Videos"):
-        start = st.session_state.queue_index
-        end = start + batch_size
-        current_batch = st.session_state.batch_queue[start:end]
+    # Process batch
+    start = st.session_state.queue_index
+    current_batch = st.session_state.batch_queue[start : start + batch_size]
+    
+    new_data = []
+    for url in current_batch:
+        vid = re.search(r"(?:v=|\/)([0-9A-Za-z_-]{11}).*", url)
+        vid = vid.group(1) if vid else None
         
-        new_data = []
-        for url in current_batch:
-            vid = extract_video_id(url)
-            text, status = get_transcript_safe(vid) if vid else ("Invalid", "FAILED")
-            new_data.append({"URL": url, "Status": status, "Transcript": text})
+        # Safe Fetching
+        try:
+            time.sleep(8 + random.uniform(0, 4))
+            data = YouTubeTranscriptApi.get_transcript(vid)
+            text, status = " ".join([c['text'] for c in data]), "OK"
+        except Exception as e:
+            text, status = str(e), "FAILED"
             
-        st.session_state.results = pd.concat([st.session_state.results, pd.DataFrame(new_data)], ignore_index=True)
-        st.session_state.queue_index += batch_size
-        st.rerun()
-else:
-    st.success("All videos processed!")
+        new_data.append({"URL": url, "Status": status, "Transcript": text})
+    
+    # Update state
+    st.session_state.results = pd.concat([st.session_state.results, pd.DataFrame(new_data)], ignore_index=True)
+    st.session_state.queue_index += len(current_batch)
+    
+    # Save State
+    with open(STATE_FILE, "w") as f:
+        json.dump({"queue": st.session_state.batch_queue, "index": st.session_state.queue_index}, f)
+        
+    st.rerun()
 
-# --- Output Layer ---
+# --- Display ---
 if not st.session_state.results.empty:
     st.dataframe(st.session_state.results)
-    towrite = BytesIO()
-    st.session_state.results.to_csv(towrite, index=False)
-    towrite.seek(0)
-    st.download_button("Download CSV", towrite, "stable_results.csv", "text/csv")
