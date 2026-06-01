@@ -1,3 +1,9 @@
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+from engine import run_transcript_job
+import streamlit as st
 import streamlit as st
 from engine import run_transcript_job
 
