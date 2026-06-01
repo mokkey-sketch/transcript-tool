@@ -5,7 +5,6 @@ import re
 
 st.title("YouTube Transcript Batch Tool")
 
-# 1. Simple Input
 urls_text = st.text_area("Paste your YouTube URLs (one per line)", height=150)
 urls = [u.strip() for u in urls_text.split('\n') if u.strip()]
 
@@ -28,7 +27,7 @@ if st.button("Process Batch"):
                 continue
             
             try:
-                # Fetch transcript
+                # Use the static method directly
                 transcript_list = YouTubeTranscriptApi.get_transcript(video_id)
                 transcript = " ".join([t['text'] for t in transcript_list])
                 results.append({"URL": url, "Transcript": transcript})
@@ -36,10 +35,8 @@ if st.button("Process Batch"):
             except Exception as e:
                 st.error(f"Could not fetch {url}: {e}")
             
-            # Update progress
             progress_bar.progress((index + 1) / len(urls))
 
-        # 3. Direct Download
         if results:
             df = pd.DataFrame(results)
             csv = df.to_csv(index=False).encode('utf-8')
